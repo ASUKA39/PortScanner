@@ -1,31 +1,44 @@
 #include <arpa/inet.h>
+#include <cstring>
 #include <iostream>
+#include <mutex>
 #include <netinet/in.h>
+#include <netinet/ip.h>
+#include <netinet/ip_icmp.h>
+#include <netinet/tcp.h>
+#include <sys/types.h>
 #include <unistd.h>
 #include <vector>
 #include <sys/socket.h>
+#include <fcntl.h>
+#include <sys/epoll.h>
 
 #include "scanner.h"
 
+extern std::vector<int> result;
+extern std::mutex resultMutex;
+
 void TCPConnectScanner::scan(const std::string& ip, const std::vector<int>& ports) {
     // 与目标端口建立连接，如果连接成功则端口开放，收到RST则端口关闭
-    for (int port : ports) {
-        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-        if (sockfd < 0) {
-            std::cerr << "Error: cannot open socket" << std::endl;
-            return;
-        }
-        struct sockaddr_in addr;
-        addr.sin_family = AF_INET;
-        addr.sin_port = htons(port);
-        addr.sin_addr.s_addr = inet_addr(ip.c_str());
-        if (connect(sockfd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-            // std::cout << "Port " << port << " is closed" << std::endl;
-        } else {
-            std::cout << "Port " << port << " is open" << std::endl;
-        }
-        close(sockfd);
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0) {
+        std::cerr << "Error: cannot open socket" << std::endl;
+        return;
     }
+    struct sockaddr_in addr;
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = inet_addr(ip.c_str());
+
+    for (int port : ports) {
+        addr.sin_port = htons(port);
+        if (connect(sockfd, (struct sockaddr*)&addr, sizeof(addr)) >= 0) {
+            // std::cout << "Port " << port << " is open" << std::endl;
+            std::lock_guard<std::mutex> lock(resultMutex);
+            result.push_back(port);
+        }
+    }
+    close(sockfd);
+    return;
 }
 
 void TCPSYNScanner::scan(const std::string& ip, const std::vector<int>& ports) {
@@ -34,6 +47,23 @@ void TCPSYNScanner::scan(const std::string& ip, const std::vector<int>& ports) {
 
 void TCPNULLScanner::scan(const std::string& ip, const std::vector<int>& ports) {
     // 发送不带标志位的TCP包，如果没有回复则端口开放，收到RST则端口关闭
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0) {
+        std::cerr << "Error: cannot open socket" << std::endl;
+        return;
+    }
+
+    struct sockaddr_in addr;
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = inet_addr(ip.c_str());
+
+    for (int port : ports) {
+        addr.sin_port = htons(port);
+
+    }
+
+    close(sockfd);
+    return;
 }
 
 void TCPFINScanner::scan(const std::string& ip, const std::vector<int>& ports) {
@@ -44,8 +74,8 @@ void UDPScanner::scan(const std::string& ip, const std::vector<int>& ports) {
     // 发送UDP包，收到ICMP Port Unreachable则端口关闭，否则端口开放
 }
 
-void ICMPScanner::scan(const std::string& ip, const std::vector<int>& ports) {
-}
+// void ICMPScanner::scan(const std::string& ip, const std::vector<int>& ports) {
+// }
 
 Scanner* ScannerFactory::createScanner(const std::string& type) {
     if (type == "TCPConnect") {
@@ -58,8 +88,8 @@ Scanner* ScannerFactory::createScanner(const std::string& type) {
         return new TCPFINScanner();
     } else if (type == "UDP") {
         return new UDPScanner();
-    } else if (type == "ICMP") {
-        return new ICMPScanner();
+    // } else if (type == "ICMP") {
+    //     return new ICMPScanner();
     } else {
         return nullptr;
     }

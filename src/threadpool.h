@@ -15,6 +15,7 @@ public:
     ThreadPool(int numThreads);
     ~ThreadPool();
     void enqueue(std::function<void()> task);
+    bool isAllTaskFinished();
 private:
     std::vector<std::thread> workers;
     std::queue<std::function<void()>> tasks;

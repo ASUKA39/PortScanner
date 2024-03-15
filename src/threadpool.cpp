@@ -21,7 +21,7 @@ ThreadPool::ThreadPool(int numThreads) : stop(false) {
                         return this->stop || !this->tasks.empty();
                     });
                     if (this->stop && this->tasks.empty()) {
-                        return;
+                       return;
                     }
                     task = std::move(this->tasks.front());
                     this->tasks.pop();
@@ -49,4 +49,9 @@ void ThreadPool::enqueue(std::function<void()> task) {
         tasks.push(task);
     }
     condition.notify_one();
+}
+
+bool ThreadPool::isAllTaskFinished() {
+    std::unique_lock<std::mutex> lock(queueMutex);
+    return tasks.empty();
 }

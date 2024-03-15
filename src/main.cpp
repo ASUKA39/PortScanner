@@ -1,33 +1,70 @@
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <unistd.h>
 #include <vector>
+#include <algorithm>
+#include <iostream>
 
 #include "threadpool.h"
 #include "scanner.h"
+#include "dict.h"
+
+std::vector<int> result;
+std::mutex resultMutex;
 
 int main(int argc, char* argv[]) {
-    int threadNum = 48;
+    int threadNum = std::thread::hardware_concurrency() * 3;
+    Dict dict;
 
-    if (argc < 2 || argc > 4) {
-        std::cerr << "Usage: " << argv[0] << " <ip>" << " <start port>" << " <end port>" << std::endl;
+    if (argc < 2 || argc > 5) {
+        std::cerr << "Usage: " << argv[0] << " <ip>" << " <start port>" << " <end port>" << " <scan type>" << std::endl;
         return 1;
     }
     std::string ip = argv[1];
     int startPort = std::stoi(argv[2]);
     int endPort = std::stoi(argv[3]);
-    std::vector<int> ports;
-    for (int i = startPort; i <= endPort; i++) {
-        ports.push_back(i);
+    std::string scanType = argc == 5 ? argv[4] : "TCPConnect";
+    // Starting Scan at YYYY-MM-DD HH:MM CST
+    std::cout << "Starting Scan at " << __DATE__ << " " << __TIME__ << " CST" << std::endl;
+    // scan report for <ip>
+    std::cout << "scan report for " << ip << std::endl;
+
+    {
+        ThreadPool pool(threadNum);
+        for (int i = 0; i < threadNum; i++) {
+            std::vector<int> subPorts;
+            for (int j = startPort + i; j <= endPort; j += threadNum) {
+                subPorts.push_back(j);
+            }
+            pool.enqueue([i, ip, subPorts, scanType] {
+                ScannerFactory factory;
+                Scanner* scanner = factory.createScanner(scanType);
+                scanner->scan(ip, subPorts);
+            });
+        }
+
+        while (!pool.isAllTaskFinished()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
     }
 
-    ThreadPool pool(threadNum);
-    for (int i = 0; i < threadNum; i++) {
-        // 分段扫描
-        std::vector<int> subPorts(ports.begin() + i * (endPort - startPort) / threadNum, ports.begin() + (i + 1) * (endPort - startPort) / threadNum);
-        pool.enqueue([i, ip, subPorts] {
-            // std::cout << "Task " << i << " is running on core " << sched_getcpu() << std::endl;
-            ScannerFactory factory;
-            Scanner* scanner = factory.createScanner("TCPConnect");
-            scanner->scan(ip, subPorts);
-        });
+    std::cout << "Not shown: " << (endPort - startPort + 1 - result.size()) << " closed ports" << std::endl;
+    std::cout << "PORT      STATE SERVICE" << std::endl;
+
+    if (!result.empty()) {
+        std::sort(result.begin(), result.end());
+        for (int port : result) {
+            std::string mode;
+            if (scanType[0] == 'T') {
+                mode = "/tcp";
+            } else {
+                mode = "/udp";
+            }
+            mode = std::to_string(port) + mode;
+            // 52829/tcp open  unknown
+            printf("%-10s%-6s%-8s\n", mode.c_str(), "open", dict.getServiceByPort(port).c_str());
+        }
     }
+
     return 0;
 }
