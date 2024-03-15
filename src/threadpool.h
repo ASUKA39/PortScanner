@@ -6,28 +6,21 @@
 #include <mutex>
 #include <condition_variable>
 #include <functional>
+#include <queue>
 #include <vector>
-#include <coroutine>
+// #include <coroutine>
 
 class ThreadPool {
 public:
-    ThreadPool();
-
+    ThreadPool(int numThreads);
     ~ThreadPool();
-
-    template<typename Func, typename... Args>
-    auto enqueue(Func &&func, Args &&... args);
-
+    void enqueue(std::function<void()> task);
 private:
-    std::vector<std::thread> threads;
-    std::vector<std::function<void()>> tasks;
-    std::mutex mutex;
+    std::vector<std::thread> workers;
+    std::queue<std::function<void()>> tasks;
+    std::mutex queueMutex;
     std::condition_variable condition;
-    bool stop = false;
-
-    void threadFunction(int cpu_core);
-
-    void coroutineFunction();
+    bool stop;
 };
 
 #endif // __THREADPOOL_H__

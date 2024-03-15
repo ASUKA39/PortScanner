@@ -1,85 +1,52 @@
-#include <iostream>
-#include <thread>
-#include <mutex>
-#include <condition_variable>
 #include <functional>
-#include <vector>
-#include <coroutine>
-#include <type_traits>
+#include <pthread.h>
+#include <sched.h>
 
 #include "threadpool.h"
 
-using namespace std;
+ThreadPool::ThreadPool(int numThreads) : stop(false) {
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    int numCore = std::thread::hardware_concurrency();
+    for (int i = 0; i < numThreads; i++) {
+        CPU_SET(i % numCore, &cpuset);
+        workers.emplace_back([this, cpuset] {   // lambda function to create task for each thread
+            pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset); // set thread affinity
 
-constexpr int MAX_THREADS = 16;
-constexpr int MAX_COROUTINES_PER_THREAD = 16;
-
-ThreadPool::ThreadPool() {
-    for (int i = 0; i < MAX_THREADS; ++i) {
-        threads.emplace_back(std::bind(&ThreadPool::threadFunction, this, i));
+            while(true) {   // main loop of thread
+                std::function<void()> task;
+                {
+                    std::unique_lock<std::mutex> lock(this->queueMutex);    // lock the critical section
+                    this->condition.wait(lock, [this] {  // wait for the condition to be true
+                        return this->stop || !this->tasks.empty();  // condition is stop or tasks is not empty
+                    });
+                    if (this->stop && this->tasks.empty()) {    // if stop is true and tasks is empty
+                        return;
+                    }
+                    task = std::move(this->tasks.front());  // get the task from the front of the queue
+                    this->tasks.pop();  // remove the task from the queue
+                }
+                task();
+            }
+        });
     }
 }
 
 ThreadPool::~ThreadPool() {
     {
-        std::unique_lock<std::mutex> lock(mutex);
+        std::unique_lock<std::mutex> lock(queueMutex);
         stop = true;
     }
     condition.notify_all();
-    for (std::thread &worker : threads) {
+    for (std::thread &worker : workers) {
         worker.join();
     }
 }
 
-template<typename Func, typename... Args>
-auto ThreadPool::enqueue(Func &&func, Args &&... args) {
-    using ReturnType = std::invoke_result_t<Func, Args...>;
-
-    std::shared_ptr<std::packaged_task<ReturnType()>> task = std::make_shared<std::packaged_task<ReturnType()>>(
-        std::bind(std::forward<Func>(func), std::forward<Args>(args)...)
-    );
-
-    std::future<ReturnType> future = task->get_future();
-
+void ThreadPool::enqueue(std::function<void()> task) {
     {
-        std::lock_guard<std::mutex> lock(mutex);
-        tasks.emplace([task]() { (*task)(); });
+        std::unique_lock<std::mutex> lock(queueMutex);
+        tasks.push(task);
     }
-
     condition.notify_one();
-
-    return future;
-}
-
-void ThreadPool::threadFunction(int cpu_core) {
-    // Bind thread to CPU core
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    CPU_SET(cpu_core, &cpuset);
-    pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
-
-    // Create coroutine pool
-    for (int i = 0; i < MAX_COROUTINES_PER_THREAD; ++i) {
-        coroutineFunction();
-    }
-
-    while (true) {
-        std::function<void()> task;
-        {
-            std::unique_lock<std::mutex> lock(mutex);
-            condition.wait(lock, [this]() { return stop || !tasks.empty(); });
-            if (stop && tasks.empty()) {
-                return;
-            }
-            task = std::move(tasks.front());
-            tasks.pop();
-        }
-        task();
-    }
-}
-
-void ThreadPool::coroutineFunction() {
-    std::cout << "Coroutine running on thread " << std::this_thread::get_id() << std::endl;
-    // Placeholder coroutine logic
-    std::this_thread::sleep_for(std::chrono::seconds(1));
 }
