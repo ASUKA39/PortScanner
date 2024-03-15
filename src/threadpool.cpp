@@ -10,21 +10,21 @@ ThreadPool::ThreadPool(int numThreads) : stop(false) {
     int numCore = std::thread::hardware_concurrency();
     for (int i = 0; i < numThreads; i++) {
         CPU_SET(i % numCore, &cpuset);
-        workers.emplace_back([this, cpuset] {   // lambda function to create task for each thread
-            pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset); // set thread affinity
+        workers.emplace_back([this, cpuset] {
+            pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
 
-            while(true) {   // main loop of thread
+            while(true) {
                 std::function<void()> task;
                 {
-                    std::unique_lock<std::mutex> lock(this->queueMutex);    // lock the critical section
-                    this->condition.wait(lock, [this] {  // wait for the condition to be true
-                        return this->stop || !this->tasks.empty();  // condition is stop or tasks is not empty
+                    std::unique_lock<std::mutex> lock(this->queueMutex);
+                    this->condition.wait(lock, [this] {
+                        return this->stop || !this->tasks.empty();
                     });
-                    if (this->stop && this->tasks.empty()) {    // if stop is true and tasks is empty
+                    if (this->stop && this->tasks.empty()) {
                         return;
                     }
-                    task = std::move(this->tasks.front());  // get the task from the front of the queue
-                    this->tasks.pop();  // remove the task from the queue
+                    task = std::move(this->tasks.front());
+                    this->tasks.pop();
                 }
                 task();
             }
