@@ -1,7 +1,7 @@
 # Port Scanner
 
 ```shell
-g++ -std=c++17 -o scanner -O3 src/*.cpp -pthread -fcoroutines`
+g++ -std=c++17 -o scanner -O3 src/*.cpp -pthread -fcoroutines
 ```
 
 ## TODO
