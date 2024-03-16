@@ -5,14 +5,16 @@
 #include "threadpool.h"
 
 ThreadPool::ThreadPool(int numThreads) : stop(false) {
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
+
     int numCore = std::thread::hardware_concurrency();
     for (int i = 0; i < numThreads; i++) {
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
         CPU_SET(i % numCore, &cpuset);
         workers.emplace_back([this, cpuset] {
             pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
-
+            // std::cout << "Thread " << std::this_thread::get_id() << " is running on CPU " << sched_getcpu() << std::endl;
+            
             while(true) {
                 std::function<void()> task;
                 {
