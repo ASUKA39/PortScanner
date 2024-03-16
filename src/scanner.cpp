@@ -22,6 +22,8 @@ extern std::mutex resultMutex;
 
 void TCPConnectScanner::scan(const std::string& ip, const std::vector<int>& ports) {
     // 与目标端口建立连接，如果连接成功则端口开放，收到RST则端口关闭
+
+    // using blocking I/O to scan: if ip is reachable, it is about 10 times faster than epoll
     // int sockfd = socket(AF_INET, SOCK_STREAM, 0);
     // if (sockfd < 0) {
     //     std::cerr << "Error: cannot open socket" << std::endl;
@@ -42,7 +44,7 @@ void TCPConnectScanner::scan(const std::string& ip, const std::vector<int>& port
     // close(sockfd);
     // return;
 
-    // using epoll to scan
+    // using epoll to scan: slower but if ip is unreachable, non-blocking I/O can handle it
     std::map<int, struct sockaddr_in> addrMap;
     int epollfd = epoll_create(1);
     if (epollfd < 0) {
@@ -159,3 +161,26 @@ Scanner* ScannerFactory::createScanner(const std::string& type) {
         return nullptr;
     }
 }
+
+static unsigned short csum(unsigned short *ptr, int nbytes) {
+    long sum;
+    unsigned short oddbyte;
+    short answer;
+
+    sum = 0;
+    while (nbytes > 1) {
+        sum += *ptr++;
+        nbytes -= 2;
+    }
+    if (nbytes == 1) {
+        oddbyte = 0;
+        *((u_char*)&oddbyte) = *(u_char*)ptr;
+        sum += oddbyte;
+    }
+
+    sum = (sum >> 16) + (sum & 0xffff);
+    sum += (sum >> 16);
+    answer = (short)~sum;
+
+    return answer;
+} // csum
