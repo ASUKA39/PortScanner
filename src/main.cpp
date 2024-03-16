@@ -88,9 +88,9 @@ int main(int argc, char* argv[]) {
                 });
             }
 
-            while (!pool.isAllTaskFinished()) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            }
+            // while (!pool.isAllTaskFinished()) {
+            //     std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            // }
         }
 
         std::cout << "Not shown: " << (endPort - startPort + 1 - result.size()) << " closed ports" << std::endl;
@@ -109,6 +109,7 @@ int main(int argc, char* argv[]) {
                 printf("%-10s%-6s%-8s\n", mode.c_str(), "open", dict.getServiceByPort(port).c_str());
             }
         }
+        result.clear();
         std::cout << std::endl;
     }
 

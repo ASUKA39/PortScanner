@@ -82,9 +82,10 @@ void TCPConnectScanner::scan(const std::string& ip, const std::vector<int>& port
 
     // wait for events
     while (true) {
-        nfds = epoll_wait(epollfd, events, 16, 1);
+        nfds = epoll_wait(epollfd, events, 16, 10);
         if (nfds < 0) {
             std::cerr << "Error: epoll_wait" << std::endl;
+            close(epollfd);
             return;
         }
         for (int i = 0; i < nfds; i++) {
@@ -97,8 +98,8 @@ void TCPConnectScanner::scan(const std::string& ip, const std::vector<int>& port
                     struct sockaddr_in addr = addrMap[events[i].data.fd];
                     result.push_back(ntohs(addr.sin_port));
                 }
-                close(events[i].data.fd);
             }
+            close(events[i].data.fd);
         }
         if (nfds == 0) {
             break;

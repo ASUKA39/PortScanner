@@ -1,11 +1,11 @@
 #include <functional>
+#include <iostream>
 #include <pthread.h>
 #include <sched.h>
 
 #include "threadpool.h"
 
 ThreadPool::ThreadPool(int numThreads) : stop(false) {
-
     int numCore = std::thread::hardware_concurrency();
     for (int i = 0; i < numThreads; i++) {
         cpu_set_t cpuset;
@@ -13,8 +13,6 @@ ThreadPool::ThreadPool(int numThreads) : stop(false) {
         CPU_SET(i % numCore, &cpuset);
         workers.emplace_back([this, cpuset] {
             pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
-            // std::cout << "Thread " << std::this_thread::get_id() << " is running on CPU " << sched_getcpu() << std::endl;
-            
             while(true) {
                 std::function<void()> task;
                 {
@@ -23,7 +21,7 @@ ThreadPool::ThreadPool(int numThreads) : stop(false) {
                         return this->stop || !this->tasks.empty();
                     });
                     if (this->stop && this->tasks.empty()) {
-                       return;
+                        return;
                     }
                     task = std::move(this->tasks.front());
                     this->tasks.pop();
