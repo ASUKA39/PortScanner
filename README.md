@@ -4,7 +4,7 @@
 - [x] TCP Connect Scan
 - [ ] Error Handling if Host is not reachable
 - [ ] Scan IP Range
-- [ ] epoll
+- [x] epoll
 - [ ] Coroutines
 - [ ] TCP SYN Scan
 - [ ] TCP ACK Scan
