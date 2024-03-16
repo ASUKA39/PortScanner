@@ -4,6 +4,7 @@
 #include <vector>
 #include <algorithm>
 #include <iostream>
+#include <iomanip>
 
 #include "threadpool.h"
 #include "scanner.h"
@@ -28,6 +29,9 @@ int main(int argc, char* argv[]) {
     std::cout << "Starting Scan at " << __DATE__ << " " << __TIME__ << " CST" << std::endl;
     // scan report for <ip>
     std::cout << "scan report for " << ip << std::endl;
+
+    // start time
+    auto start = std::chrono::high_resolution_clock::now();
 
     {
         ThreadPool pool(threadNum);
@@ -61,10 +65,15 @@ int main(int argc, char* argv[]) {
                 mode = "/udp";
             }
             mode = std::to_string(port) + mode;
-            // 52829/tcp open  unknown
             printf("%-10s%-6s%-8s\n", mode.c_str(), "open", dict.getServiceByPort(port).c_str());
         }
     }
+
+    // end time
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end - start;
+    //  Scan completed in 0.00 seconds
+    std::cout << std::endl << "Scan completed in " << std::fixed << std::setprecision(2) << elapsed.count() << " seconds" << std::endl;
 
     return 0;
 }
