@@ -9,16 +9,15 @@
 #include "threadpool.h"
 #include "scanner.h"
 #include "dict.h"
+#include "target.h"
 
-std::vector<int> result;
-std::mutex resultMutex;
+std::map<std::string, Result> resultMap;
 
 int main(int argc, char* argv[]) {
     int threadNum = std::thread::hardware_concurrency() * 3;
     Dict dict;
 
     if (argc < 2 || argc > 4) {
-        std::cerr << "Usage: " << argv[0] << " <ip>" << " <start port>" << "-<end port>" << " <scan type>" << std::endl;
         std::cerr << "Usage: " << argv[0] << " <ip>/<mask>" << " <start port>" << "-<end port>" << " <scan type>" << std::endl;
         return 1;
     }
@@ -70,35 +69,53 @@ int main(int argc, char* argv[]) {
         ipVec.push_back(ipArg);
     }
 
-    for (std::string ip : ipVec) {
-        // scan report for <ip>
-        std::cout << "scan report for " << ip << std::endl;
-
-        {
-            ThreadPool pool(threadNum);
-            for (int i = 0; i < threadNum; i++) {
-                std::vector<int> subPorts;
-                for (int j = startPort + i; j <= endPort; j += threadNum) {
-                    subPorts.push_back(j);
+    {
+        ThreadPool pool(threadNum);
+        int taskNum = ipVec.size() * (endPort - startPort + 1);
+        std::cout << "Total " << taskNum << " tasks" << std::endl;
+        int taskSize = taskNum / threadNum > 65536 / threadNum ? 65536 / threadNum : taskNum / threadNum;
+        int count = 0;
+        std::vector<Target> targetPack;
+        std::vector<std::vector<Target>> targetPacks;
+        for (std::string ip : ipVec) {
+            for (int i = 0; i < endPort - startPort + 1; i++) {
+                if (count >= taskSize || (ip == ipVec.back() && i == endPort - startPort)) {
+                    targetPacks.push_back(targetPack);
+                    targetPack.clear();
+                    count = 0;
                 }
-                pool.enqueue([i, ip, subPorts, scanType] {
-                    ScannerFactory factory;
-                    Scanner* scanner = factory.createScanner(scanType);
-                    scanner->scan(ip, subPorts);
-                });
+                if (targetPack.empty()) {
+                    targetPack.push_back(Target());
+                    targetPack.back().ip = ip;
+                }
+                if (ip == targetPack.back().ip) {
+                    targetPack.back().ports.push_back(startPort + i);
+                } else {
+                    targetPack.push_back(Target());
+                    targetPack.back().ip = ip;
+                    targetPack.back().ports.push_back(startPort + i);
+                }
+                count++;
             }
-
-            // while (!pool.isAllTaskFinished()) {
-            //     std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            // }
         }
 
-        std::cout << "Not shown: " << (endPort - startPort + 1 - result.size()) << " closed ports" << std::endl;
+        for (std::vector<Target> targetPack : targetPacks) {
+            pool.enqueue([targetPack, scanType] {
+                ScannerFactory factory;
+                Scanner* scanner = factory.createScanner(scanType);
+                return scanner->scan(targetPack);
+            });
+        }
+    }
 
-        if (!result.empty()) {
+    for (std::string ip : ipVec) {
+        std::sort(resultMap[ip].ports.begin(), resultMap[ip].ports.end());
+
+        std::cout << "scan report for " << ip << std::endl;
+        std::cout << "Not shown: " << (endPort - startPort + 1 - resultMap[ip].ports.size()) << " closed ports" << std::endl;
+        if (!resultMap[ip].ports.empty()) {
             std::cout << "PORT      STATE SERVICE" << std::endl;
-            std::sort(result.begin(), result.end());
-            for (int port : result) {
+            for (int port : resultMap[ip].ports) {
                 std::string mode;
                 if (scanType[0] == 'T') {
                     mode = "/tcp";
@@ -109,7 +126,6 @@ int main(int argc, char* argv[]) {
                 printf("%-10s%-6s%-8s\n", mode.c_str(), "open", dict.getServiceByPort(port).c_str());
             }
         }
-        result.clear();
         std::cout << std::endl;
     }
 

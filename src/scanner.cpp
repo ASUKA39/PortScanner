@@ -8,6 +8,7 @@
 #include <netinet/ip.h>
 #include <netinet/ip_icmp.h>
 #include <netinet/tcp.h>
+#include <string>
 #include <sys/types.h>
 #include <unistd.h>
 #include <vector>
@@ -16,11 +17,13 @@
 #include <sys/epoll.h>
 
 #include "scanner.h"
+#include "target.h"
 
-extern std::vector<int> result;
-extern std::mutex resultMutex;
+extern std::map<std::string, Result> resultMap;
 
-void TCPConnectScanner::scan(const std::string& ip, const std::vector<int>& ports) {
+int TCPConnectScanner::scan(const std::vector<Target>& targets) {
+// void TCPConnectScanner::scan(const std::vector<std::string>& ips, const std::vector<int>& ports) {
+// void TCPConnectScanner::scan(const std::string& ip, const std::vector<int>& ports) {
     // 与目标端口建立连接，如果连接成功则端口开放，收到RST则端口关闭
 
     // using blocking I/O to scan: if ip is reachable, it is about 10 times faster than epoll
@@ -48,36 +51,44 @@ void TCPConnectScanner::scan(const std::string& ip, const std::vector<int>& port
     std::map<int, struct sockaddr_in> addrMap;
     int epollfd = epoll_create(1);
     if (epollfd < 0) {
-        std::cerr << "Error: cannot create epoll" << std::endl;
-        return;
+        std::cerr << "Error: cannot create epoll " << epollfd << std::endl;
+        return -1;
     }
 
-    struct epoll_event ev, events[ports.size()+1];
+    struct epoll_event ev, events[20];
     int nfds, sockfd;
-    for (int port : ports) {
-        sockfd = socket(AF_INET, SOCK_STREAM, 0);
-        if (sockfd < 0) {
-            std::cerr << "Error: cannot open socket" << std::endl;
-            return;
-        }
-        fcntl(sockfd, F_SETFL, O_NONBLOCK); // set non-blocking
-        struct sockaddr_in addr;
-
-        addr.sin_family = AF_INET;
-        addr.sin_addr.s_addr = inet_addr(ip.c_str());
-        addr.sin_port = htons(port);
-        addrMap[sockfd] = addr;
-
-        if (connect(sockfd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-            if (errno != EINPROGRESS) {
-                std::cerr << "Error: cannot connect" << std::endl;
-                return;
+    for (Target target : targets) {
+        std::string ip = target.ip;
+        // for (std::string ip : target.first) {
+            // for (int port : target.second) {
+        for (int port : target.ports) {
+            sockfd = socket(AF_INET, SOCK_STREAM, 0);
+            if (sockfd < 0) {
+                std::cerr << "Error: cannot open socket" << std::endl;
+                close(epollfd);
+                return -1;
             }
-        }
+            fcntl(sockfd, F_SETFL, O_NONBLOCK); // set non-blocking
+            struct sockaddr_in addr;
 
-        ev.events = EPOLLOUT;
-        ev.data.fd = sockfd;
-        epoll_ctl(epollfd, EPOLL_CTL_ADD, sockfd, &ev);
+            addr.sin_family = AF_INET;
+            addr.sin_addr.s_addr = inet_addr(ip.c_str());
+            addr.sin_port = htons(port);
+            addrMap[sockfd] = addr;
+
+            if (connect(sockfd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+                if (errno != EINPROGRESS) {
+                    std::cerr << "Error: cannot connect" << std::endl;
+                    close(sockfd);
+                    close(epollfd);
+                    return -1;
+                }
+            }
+
+            ev.events = EPOLLOUT;
+            ev.data.fd = sockfd;
+            epoll_ctl(epollfd, EPOLL_CTL_ADD, sockfd, &ev);
+        }
     }
 
     // wait for events
@@ -86,7 +97,7 @@ void TCPConnectScanner::scan(const std::string& ip, const std::vector<int>& port
         if (nfds < 0) {
             std::cerr << "Error: epoll_wait" << std::endl;
             close(epollfd);
-            return;
+            return -1;
         }
         for (int i = 0; i < nfds; i++) {
             if (events[i].events & EPOLLOUT) {  // connect might not be success, need to check
@@ -94,9 +105,12 @@ void TCPConnectScanner::scan(const std::string& ip, const std::vector<int>& port
                 socklen_t len = sizeof(error);
                 getsockopt(events[i].data.fd, SOL_SOCKET, SO_ERROR, &error, &len);
                 if (error == 0) {   // no error, connect success
-                    std::lock_guard<std::mutex> lock(resultMutex);
+                    // std::lock_guard<std::mutex> lock(resultMutex);
+                    std::string ip = inet_ntoa(addrMap[events[i].data.fd].sin_addr);
+                    std::lock_guard<std::mutex> lock(resultMap[ip].mtx);
                     struct sockaddr_in addr = addrMap[events[i].data.fd];
-                    result.push_back(ntohs(addr.sin_port));
+                    // result.push_back(ntohs(addr.sin_port));
+                    resultMap[ip].ports.push_back(ntohs(addr.sin_port));
                 }
             }
             close(events[i].data.fd);
@@ -106,40 +120,27 @@ void TCPConnectScanner::scan(const std::string& ip, const std::vector<int>& port
         }
     }
     close(epollfd);
-    return;
+    return 0;
 }
 
-void TCPSYNScanner::scan(const std::string& ip, const std::vector<int>& ports) {
+int TCPSYNScanner::scan(const std::vector<Target>& targets) {
     // 发送SYN包，收到SYN/ACK则端口开放，收到RST则端口关闭
+    return 0;
 }
 
-void TCPNULLScanner::scan(const std::string& ip, const std::vector<int>& ports) {
+int TCPNULLScanner::scan(const std::vector<Target>& targets) {
     // 发送不带标志位的TCP包，如果没有回复则端口开放，收到RST则端口关闭
-    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd < 0) {
-        std::cerr << "Error: cannot open socket" << std::endl;
-        return;
-    }
-
-    struct sockaddr_in addr;
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = inet_addr(ip.c_str());
-
-    for (int port : ports) {
-        addr.sin_port = htons(port);
-
-    }
-
-    close(sockfd);
-    return;
+    return 0;
 }
 
-void TCPFINScanner::scan(const std::string& ip, const std::vector<int>& ports) {
+int TCPFINScanner::scan(const std::vector<Target>& targets) {
     // 发送FIN包，收到RST则端口关闭，收到FIN/ACK则端口开放
+    return 0;
 }
 
-void UDPScanner::scan(const std::string& ip, const std::vector<int>& ports) {
+int UDPScanner::scan(const std::vector<Target>& targets) {
     // 发送UDP包，收到ICMP Port Unreachable则端口关闭，否则端口开放
+    return 0;
 }
 
 // void ICMPScanner::scan(const std::string& ip, const std::vector<int>& ports) {
