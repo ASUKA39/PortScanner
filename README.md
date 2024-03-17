@@ -6,7 +6,7 @@ g++ -std=c++17 -o scanner -O3 src/*.cpp -pthread -fcoroutines
 
 ## TODO
 - [x] Basic framework
-- [x] Thread Pool
+- [x] Basic static thread Pool
 - [x] Error Handling if Host is not reachable
 - [ ] Invalid arguments handling
 - [x] Scan port range
@@ -14,6 +14,7 @@ g++ -std=c++17 -o scanner -O3 src/*.cpp -pthread -fcoroutines
 - [ ] Multithreading between different IPs
 - [x] epoll
 - [x] CPU binding (Seems useless in fact lol)
+- [ ] Dynamic thread pool
 - [ ] Coroutines (Maybe)
 - [x] TCP Connect Scan
 - [ ] TCP SYN Scan
