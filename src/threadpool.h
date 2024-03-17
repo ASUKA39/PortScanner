@@ -1,6 +1,6 @@
-#ifndef __THREADPOOL_H__
-#define __THREADPOOL_H__
+#pragma once
 
+#include <atomic>
 #include <iostream>
 #include <thread>
 #include <mutex>
@@ -14,14 +14,15 @@ class ThreadPool {
 public:
     ThreadPool(int numThreads);
     ~ThreadPool();
-    void enqueue(std::function<void()> task);
+    void enqueue(std::function<int()> task);
     bool isAllTaskFinished();
+    int getAvailableThread();
+    bool isAvailable();
 private:
     std::vector<std::thread> workers;
-    std::queue<std::function<void()>> tasks;
+    std::queue<std::function<int()>> tasks;
     std::mutex queueMutex;
     std::condition_variable condition;
+    std::atomic<int> availableThread;
     bool stop;
 };
-
-#endif // __THREADPOOL_H__

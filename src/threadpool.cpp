@@ -1,5 +1,6 @@
 #include <functional>
 #include <iostream>
+#include <mutex>
 #include <pthread.h>
 #include <sched.h>
 
@@ -14,7 +15,8 @@ ThreadPool::ThreadPool(int numThreads) : stop(false) {
         workers.emplace_back([this, cpuset] {
             pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
             while(true) {
-                std::function<void()> task;
+                availableThread++;
+                std::function<int()> task;
                 {
                     std::unique_lock<std::mutex> lock(this->queueMutex);
                     this->condition.wait(lock, [this] {
@@ -25,8 +27,12 @@ ThreadPool::ThreadPool(int numThreads) : stop(false) {
                     }
                     task = std::move(this->tasks.front());
                     this->tasks.pop();
+                    availableThread--;
                 }
-                task();
+                int err = task();
+                if (err < 0) {
+                    std::cerr << "Error from thread pool: task failed with error " << err << std::endl;
+                }
             }
         });
     }
@@ -43,7 +49,7 @@ ThreadPool::~ThreadPool() {
     }
 }
 
-void ThreadPool::enqueue(std::function<void()> task) {
+void ThreadPool::enqueue(std::function<int()> task) {
     {
         std::unique_lock<std::mutex> lock(queueMutex);
         tasks.push(task);
@@ -53,5 +59,10 @@ void ThreadPool::enqueue(std::function<void()> task) {
 
 bool ThreadPool::isAllTaskFinished() {
     std::unique_lock<std::mutex> lock(queueMutex);
-    return tasks.empty();
+    return tasks.empty() && availableThread == workers.size();
+}
+
+bool ThreadPool::isAvailable() {
+    std::unique_lock<std::mutex> lock(queueMutex);
+    return availableThread > 0;
 }
