@@ -8,7 +8,7 @@ g++ -std=c++17 -o scanner -O3 src/*.cpp -pthread -fcoroutines
 - [x] Basic framework
 - [x] Basic thread Pool
 - [x] Error Handling if Host is not reachable
-- [ ] Invalid arguments handling
+- [x] Invalid arguments handling
 - [x] Scan port range
 - [x] Scan IP Range
 - [x] Multithreading between different IPs
