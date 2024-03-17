@@ -1,6 +1,4 @@
-#ifndef __DICT_H__
-#define __DICT_H__
-
+#pragma once
 #include <map>
 #include <string>
 
@@ -96,5 +94,3 @@ public:
         }
     }
 };
-
-#endif // __DICT_H__
