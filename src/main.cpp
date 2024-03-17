@@ -13,6 +13,11 @@
 
 std::map<std::string, Result> resultMap;
 
+static bool isIpInvalid(const std::string& ip) {
+    struct in_addr addr;
+    return inet_pton(AF_INET, ip.c_str(), &addr) == 0;
+}
+
 int main(int argc, char* argv[]) {
     int threadNum = std::thread::hardware_concurrency() * 3;
     Dict dict;
@@ -30,11 +35,24 @@ int main(int argc, char* argv[]) {
     int endPort;
     std::string portRange = argv[2];
     if (portRange.find('-') != std::string::npos) {
+        if (portRange.find('-') == 0 || portRange.find('-') == portRange.size() - 1) {
+            std::cerr << "Invalid port range" << std::endl;
+            return 1;
+        }
         startPort = std::stoi(portRange.substr(0, portRange.find('-')));
+        startPort = startPort < 1 ? 1 : startPort;
         endPort = std::stoi(portRange.substr(portRange.find('-') + 1));
+        if (endPort < startPort) {
+            std::cerr << "Invalid port range" << std::endl;
+            return 1;
+        }
     } else {
         startPort = std::stoi(portRange);
         endPort = startPort;
+        if (startPort < 1) {
+            std::cerr << "Invalid port number" << std::endl;
+            return 1;
+        }
     }
 
     std::string scanType = argc == 5 ? argv[3] : "TCPConnect";
@@ -45,7 +63,15 @@ int main(int argc, char* argv[]) {
     
     if (ipArg.find('/') != std::string::npos) {
         std::string ip = ipArg.substr(0, ipArg.find('/'));
-        std::string mask = ipArg.substr(ipArg.find('/') + 1);        
+        if (isIpInvalid(ip)) {
+            std::cerr << "Invalid IP address" << std::endl;
+            return 1;
+        }
+        std::string mask = ipArg.substr(ipArg.find('/') + 1);
+        if (std::stoi(mask) < 0 || std::stoi(mask) > 32) {
+            std::cerr << "Invalid mask" << std::endl;
+            return 1;
+        }     
 
         int maskNum = std::stoi(mask);
         int ipNum = 1 << (32 - maskNum);
@@ -66,6 +92,10 @@ int main(int argc, char* argv[]) {
             // std::cout << ipWithMask << std::endl;
         }
     } else {
+        if (isIpInvalid(ipArg)) {
+            std::cerr << "Invalid IP address" << std::endl;
+            return 1;
+        }
         ipVec.push_back(ipArg);
     }
 
