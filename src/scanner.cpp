@@ -83,7 +83,26 @@ int TCPConnectScanner::scan(const std::vector<Target>& targets) {
             std::cerr << "Error: epoll_wait" << std::endl;
             close(epollfd);
             return -1;
-        } else if (nfds == 0 || socketCount <= 0) {
+        } else if (nfds != 0) {
+            for (int i = 0; i < nfds; i++) {
+                if (events[i].events & EPOLLOUT) {  // connect might not be success, need to check
+                    int error;
+                    socklen_t len = sizeof(error);
+                    getsockopt(events[i].data.fd, SOL_SOCKET, SO_ERROR, &error, &len);
+                    if (error == 0) {   // no error, connect success
+                        std::string ip = inet_ntoa(addrMap[events[i].data.fd].sin_addr);
+                        std::lock_guard<std::mutex> lock(resultMap[ip].mtx);
+                        struct sockaddr_in addr = addrMap[events[i].data.fd];
+                        resultMap[ip].ports.push_back(ntohs(addr.sin_port));
+                    }
+                }
+                socketMap[events[i].data.fd] = false;
+                close(events[i].data.fd);
+                socketCount--;
+                // fd_count--;
+            }
+        }
+        if (socketCount <= 0 || nfds == 0) {
             for (auto it = socketMap.begin(); it != socketMap.end(); it++) {
                 if (it->second) {
                     close(it->first);
@@ -92,23 +111,6 @@ int TCPConnectScanner::scan(const std::vector<Target>& targets) {
                 }
             }
             break;
-        }
-        for (int i = 0; i < nfds; i++) {
-            if (events[i].events & EPOLLOUT) {  // connect might not be success, need to check
-                int error;
-                socklen_t len = sizeof(error);
-                getsockopt(events[i].data.fd, SOL_SOCKET, SO_ERROR, &error, &len);
-                if (error == 0) {   // no error, connect success
-                    std::string ip = inet_ntoa(addrMap[events[i].data.fd].sin_addr);
-                    std::lock_guard<std::mutex> lock(resultMap[ip].mtx);
-                    struct sockaddr_in addr = addrMap[events[i].data.fd];
-                    resultMap[ip].ports.push_back(ntohs(addr.sin_port));
-                }
-            }
-            socketMap[events[i].data.fd] = false;
-            close(events[i].data.fd);
-            socketCount--;
-            // fd_count--;
         }
     }
     close(epollfd);
