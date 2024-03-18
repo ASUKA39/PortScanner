@@ -14,6 +14,7 @@ g++ -std=c++17 -o scanner -O3 src/*.cpp -pthread -fcoroutines
 - [x] Multithreading between different IPs
 - [x] epoll
 - [x] CPU binding (Seems useless in fact lol)
+- [ ] Connection pool
 - [ ] Coroutines (Maybe)
 - [x] TCP Connect Scan
 - [ ] TCP SYN Scan
