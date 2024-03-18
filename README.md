@@ -23,4 +23,4 @@ g++ -std=c++17 -o scanner -O3 src/*.cpp -pthread -fcoroutines
 - [ ] IPv6 Support
   
 Bug:
-- [ ] Crash when scanning a large range of IP with a large range of port
+- [x] Crash when scanning a large range of IP with a large range of port
