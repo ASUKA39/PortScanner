@@ -16,7 +16,7 @@ public:
     ~ThreadPool();
     void enqueue(std::function<int()> task);
     bool isAllTaskFinished();
-    int getAvailableThread();
+    int getAvailableNum();
     bool isAvailable();
     int getTaskSize();
 private:

@@ -7,6 +7,7 @@
 #include "threadpool.h"
 
 ThreadPool::ThreadPool(int numThreads) : stop(false) {
+    availableThread = 0;
     int numCore = std::thread::hardware_concurrency();
     for (int i = 0; i < numThreads; i++) {
         cpu_set_t cpuset;
@@ -69,4 +70,8 @@ bool ThreadPool::isAvailable() {
 
 int ThreadPool::getTaskSize() {
     return tasks.size();
+}
+
+int ThreadPool::getAvailableNum() {
+    return availableThread.load();
 }
