@@ -13,6 +13,7 @@ g++ -std=c++17 -o scanner -O3 src/*.cpp -pthread -fcoroutines
 - [x] Scan IP Range
 - [x] Multithreading between different IPs
 - [x] epoll
+- [ ] Dynamic timeout wait time
 - [x] CPU binding (Seems useless in fact lol)
 - [ ] Connection pool
 - [ ] Coroutines (Maybe)
