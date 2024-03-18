@@ -18,6 +18,7 @@ public:
     bool isAllTaskFinished();
     int getAvailableThread();
     bool isAvailable();
+    int getTaskSize();
 private:
     std::vector<std::thread> workers;
     std::queue<std::function<int()>> tasks;

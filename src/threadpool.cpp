@@ -66,3 +66,7 @@ bool ThreadPool::isAvailable() {
     std::unique_lock<std::mutex> lock(queueMutex);
     return availableThread > 0;
 }
+
+int ThreadPool::getTaskSize() {
+    return tasks.size();
+}
