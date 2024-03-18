@@ -13,9 +13,7 @@
 #include "target.h"
 
 std::map<std::string, Result> resultMap;
-std::atomic<int> fd_count(5);
-int taskSize;
-int ulimit;
+// std::atomic<int> fd_count(5);
 
 static bool isIpInvalid(const std::string& ip) {
     struct in_addr addr;
@@ -32,19 +30,17 @@ static int getulimit() {
 
 int main(int argc, char* argv[]) {
     int threadNum = std::thread::hardware_concurrency() * 3;
-    ulimit = getulimit();
+    int ulimit = getulimit();
     // std::cout << "ulimit: " << ulimit << std::endl;
     Dict dict;
 
     if (argc < 2 || argc > 4) {
-        std::cerr << "Usage: " << argv[0] << " <ip>/<mask>" << " <start port>" << "-<end port>" << " <scan type>" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <ip>(/<mask>)" << " <start port>" << "-<end port>" << " <scan type>" << std::endl;
         return 1;
     }
     std::vector<std::string> ipVec;
     std::string ipArg = argv[1];
 
-    // int startPort = std::stoi(argv[2]);
-    // int endPort = std::stoi(argv[3]);
     int startPort;
     int endPort;
     std::string portRange = argv[2];
@@ -113,40 +109,40 @@ int main(int argc, char* argv[]) {
         ipVec.push_back(ipArg);
     }
 
-    {
-        ThreadPool pool(threadNum);
-        int taskNum = ipVec.size() * (endPort - startPort + 1);
-        // std::cout << "Total " << taskNum << " tasks" << std::endl;
-        taskSize = taskNum / threadNum > (ulimit - 3) / (threadNum + 1) 
+    int taskNum = ipVec.size() * (endPort - startPort + 1);
+    // std::cout << "Total " << taskNum << " tasks" << std::endl;
+    int taskSize = taskNum / threadNum > (ulimit - 3) / (threadNum + 1) 
                     ? (ulimit - 3) / (threadNum + 1)
                     : taskNum / threadNum;
-        // std::cout << "taskSize: " << taskSize << std::endl;
-
-        int count = 0;
-        std::vector<Target> targetPack;
-        std::vector<std::vector<Target>> targetPacks;
-        for (std::string ip : ipVec) {
-            for (int i = 0; i < endPort - startPort + 1; i++) {
-                if (count >= taskSize || (ip == ipVec.back() && i == endPort - startPort)) {
-                    targetPacks.push_back(targetPack);
-                    targetPack.clear();
-                    count = 0;
-                }
-                if (targetPack.empty()) {
-                    targetPack.push_back(Target());
-                    targetPack.back().ip = ip;
-                }
-                if (ip == targetPack.back().ip) {
-                    targetPack.back().ports.push_back(startPort + i);
-                } else {
-                    targetPack.push_back(Target());
-                    targetPack.back().ip = ip;
-                    targetPack.back().ports.push_back(startPort + i);
-                }
-                count++;
+    int count = 0;
+    std::vector<Target> targetPack;
+    std::vector<std::vector<Target>> targetPacks;
+    for (std::string ip : ipVec) {
+        for (int i = 0; i < endPort - startPort + 1; i++) {
+            if (count >= taskSize || (ip == ipVec.back() && i == endPort - startPort)) {
+                targetPacks.push_back(targetPack);
+                targetPack.clear();
+                count = 0;
             }
+            if (targetPack.empty()) {
+                targetPack.push_back(Target());
+                targetPack.back().ip = ip;
+            }
+            if (ip == targetPack.back().ip) {
+                targetPack.back().ports.push_back(startPort + i);
+            } else {
+                targetPack.push_back(Target());
+                targetPack.back().ip = ip;
+                targetPack.back().ports.push_back(startPort + i);
+            }
+            count++;
         }
+    }
 
+    {
+        ThreadPool pool(threadNum > targetPacks.size() 
+                        ? targetPacks.size() 
+                        : threadNum);
         for (std::vector<Target> targetPack : targetPacks) {
             pool.enqueue([targetPack, scanType] {
                 ScannerFactory factory;
