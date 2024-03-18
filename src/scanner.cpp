@@ -21,34 +21,10 @@
 #include "target.h"
 
 extern std::map<std::string, Result> resultMap;
-extern std::atomic<int> fd_count;
+// extern std::atomic<int> fd_count;
 
 int TCPConnectScanner::scan(const std::vector<Target>& targets) {
-// void TCPConnectScanner::scan(const std::vector<std::string>& ips, const std::vector<int>& ports) {
-// void TCPConnectScanner::scan(const std::string& ip, const std::vector<int>& ports) {
     // 与目标端口建立连接，如果连接成功则端口开放，收到RST则端口关闭
-
-    // using blocking I/O to scan: if ip is reachable, it is about 10 times faster than epoll
-    // int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    // if (sockfd < 0) {
-    //     std::cerr << "Error: cannot open socket" << std::endl;
-    //     return;
-    // }
-    // struct sockaddr_in addr;
-    // addr.sin_family = AF_INET;
-    // addr.sin_addr.s_addr = inet_addr(ip.c_str());
-
-    // for (int port : ports) {
-    //     addr.sin_port = htons(port);
-    //     if (connect(sockfd, (struct sockaddr*)&addr, sizeof(addr)) >= 0) {
-    //         // std::cout << "Port " << port << " is open" << std::endl;
-    //         std::lock_guard<std::mutex> lock(resultMutex);
-    //         result.push_back(port);
-    //     }
-    // }
-    // close(sockfd);
-    // return;
-
     // using epoll to scan: slower but if ip is unreachable, non-blocking I/O can handle it
     std::map<int, struct sockaddr_in> addrMap;
     int epollfd = epoll_create(1);
@@ -56,12 +32,10 @@ int TCPConnectScanner::scan(const std::vector<Target>& targets) {
         std::cerr << "Error: cannot create epoll " << epollfd << std::endl;
         return -1;
     }
-    fd_count++;
+    // fd_count++;
 
     struct epoll_event ev;
     int nfds, sockfd;
-    int socketCount = 0;
-    // std::vector<int> socketVec;
     std::map<int, bool> socketMap;
     for (Target target : targets) {
         std::string ip = target.ip;
@@ -70,11 +44,11 @@ int TCPConnectScanner::scan(const std::vector<Target>& targets) {
             if (sockfd < 0) {
                 std::cerr << "Error: cannot open socket" << std::endl;
                 std::cerr << "errno: " << errno << std::endl;
-                std::cerr << "fd_count: " << fd_count.load() << std::endl;
+                // std::cerr << "fd_count: " << fd_count.load() << std::endl;
                 close(epollfd);
                 return -1;
             }
-            fd_count++;
+            // fd_count++;
 
             fcntl(sockfd, F_SETFL, O_NONBLOCK); // set non-blocking
             struct sockaddr_in addr;
@@ -92,8 +66,6 @@ int TCPConnectScanner::scan(const std::vector<Target>& targets) {
                     return -1;
                 }
             }
-            socketCount++;
-            //socketVec.push_back(sockfd);
             socketMap[sockfd] = true;
 
             ev.events = EPOLLOUT;
@@ -104,19 +76,19 @@ int TCPConnectScanner::scan(const std::vector<Target>& targets) {
 
     // wait for events
     struct epoll_event events[20];
+    int socketCount = socketMap.size();
     while (true) {
         nfds = epoll_wait(epollfd, events, 16, 1000);
         if (nfds < 0) {
             std::cerr << "Error: epoll_wait" << std::endl;
             close(epollfd);
             return -1;
-        } else if (nfds == 0) {
+        } else if (nfds == 0 || socketCount <= 0) {
             for (auto it = socketMap.begin(); it != socketMap.end(); it++) {
                 if (it->second) {
                     close(it->first);
                     it->second = false;
-                    fd_count--;
-                    socketCount--;
+                    // fd_count--;
                 }
             }
             break;
@@ -127,22 +99,20 @@ int TCPConnectScanner::scan(const std::vector<Target>& targets) {
                 socklen_t len = sizeof(error);
                 getsockopt(events[i].data.fd, SOL_SOCKET, SO_ERROR, &error, &len);
                 if (error == 0) {   // no error, connect success
-                    // std::lock_guard<std::mutex> lock(resultMutex);
                     std::string ip = inet_ntoa(addrMap[events[i].data.fd].sin_addr);
                     std::lock_guard<std::mutex> lock(resultMap[ip].mtx);
                     struct sockaddr_in addr = addrMap[events[i].data.fd];
-                    // result.push_back(ntohs(addr.sin_port));
                     resultMap[ip].ports.push_back(ntohs(addr.sin_port));
                 }
             }
             socketMap[events[i].data.fd] = false;
             close(events[i].data.fd);
-            fd_count--;
             socketCount--;
+            // fd_count--;
         }
     }
     close(epollfd);
-    fd_count--;
+    // fd_count--;
     return 0;
 }
 
@@ -186,26 +156,3 @@ Scanner* ScannerFactory::createScanner(const std::string& type) {
         return nullptr;
     }
 }
-
-static unsigned short csum(unsigned short *ptr, int nbytes) {
-    long sum;
-    unsigned short oddbyte;
-    short answer;
-
-    sum = 0;
-    while (nbytes > 1) {
-        sum += *ptr++;
-        nbytes -= 2;
-    }
-    if (nbytes == 1) {
-        oddbyte = 0;
-        *((u_char*)&oddbyte) = *(u_char*)ptr;
-        sum += oddbyte;
-    }
-
-    sum = (sum >> 16) + (sum & 0xffff);
-    sum += (sum >> 16);
-    answer = (short)~sum;
-
-    return answer;
-} // csum
