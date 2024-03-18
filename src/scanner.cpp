@@ -1,5 +1,6 @@
 #include <arpa/inet.h>
 #include <asm-generic/errno.h>
+#include <atomic>
 #include <cstring>
 #include <iostream>
 #include <map>
@@ -20,6 +21,7 @@
 #include "target.h"
 
 extern std::map<std::string, Result> resultMap;
+extern std::atomic<int> fd_count;
 
 int TCPConnectScanner::scan(const std::vector<Target>& targets) {
 // void TCPConnectScanner::scan(const std::vector<std::string>& ips, const std::vector<int>& ports) {
@@ -54,20 +56,26 @@ int TCPConnectScanner::scan(const std::vector<Target>& targets) {
         std::cerr << "Error: cannot create epoll " << epollfd << std::endl;
         return -1;
     }
+    fd_count++;
 
-    struct epoll_event ev, events[20];
+    struct epoll_event ev;
     int nfds, sockfd;
+    int socketCount = 0;
+    // std::vector<int> socketVec;
+    std::map<int, bool> socketMap;
     for (Target target : targets) {
         std::string ip = target.ip;
-        // for (std::string ip : target.first) {
-            // for (int port : target.second) {
         for (int port : target.ports) {
             sockfd = socket(AF_INET, SOCK_STREAM, 0);
             if (sockfd < 0) {
                 std::cerr << "Error: cannot open socket" << std::endl;
+                std::cerr << "errno: " << errno << std::endl;
+                std::cerr << "fd_count: " << fd_count.load() << std::endl;
                 close(epollfd);
                 return -1;
             }
+            fd_count++;
+
             fcntl(sockfd, F_SETFL, O_NONBLOCK); // set non-blocking
             struct sockaddr_in addr;
 
@@ -77,13 +85,16 @@ int TCPConnectScanner::scan(const std::vector<Target>& targets) {
             addrMap[sockfd] = addr;
 
             if (connect(sockfd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-                if (errno != EINPROGRESS) {
+                if (errno != EINPROGRESS) { // not in progress
                     std::cerr << "Error: cannot connect" << std::endl;
                     close(sockfd);
                     close(epollfd);
                     return -1;
                 }
             }
+            socketCount++;
+            //socketVec.push_back(sockfd);
+            socketMap[sockfd] = true;
 
             ev.events = EPOLLOUT;
             ev.data.fd = sockfd;
@@ -92,12 +103,23 @@ int TCPConnectScanner::scan(const std::vector<Target>& targets) {
     }
 
     // wait for events
+    struct epoll_event events[20];
     while (true) {
-        nfds = epoll_wait(epollfd, events, 16, 10);
+        nfds = epoll_wait(epollfd, events, 16, 1000);
         if (nfds < 0) {
             std::cerr << "Error: epoll_wait" << std::endl;
             close(epollfd);
             return -1;
+        } else if (nfds == 0) {
+            for (auto it = socketMap.begin(); it != socketMap.end(); it++) {
+                if (it->second) {
+                    close(it->first);
+                    it->second = false;
+                    fd_count--;
+                    socketCount--;
+                }
+            }
+            break;
         }
         for (int i = 0; i < nfds; i++) {
             if (events[i].events & EPOLLOUT) {  // connect might not be success, need to check
@@ -113,13 +135,14 @@ int TCPConnectScanner::scan(const std::vector<Target>& targets) {
                     resultMap[ip].ports.push_back(ntohs(addr.sin_port));
                 }
             }
+            socketMap[events[i].data.fd] = false;
             close(events[i].data.fd);
-        }
-        if (nfds == 0) {
-            break;
+            fd_count--;
+            socketCount--;
         }
     }
     close(epollfd);
+    fd_count--;
     return 0;
 }
 

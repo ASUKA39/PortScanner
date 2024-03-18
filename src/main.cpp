@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <iostream>
 #include <iomanip>
+#include <sys/resource.h>
 
 #include "threadpool.h"
 #include "scanner.h"
@@ -12,14 +13,27 @@
 #include "target.h"
 
 std::map<std::string, Result> resultMap;
+std::atomic<int> fd_count(5);
+int taskSize;
+int ulimit;
 
 static bool isIpInvalid(const std::string& ip) {
     struct in_addr addr;
     return inet_pton(AF_INET, ip.c_str(), &addr) == 0;
 }
 
+static int getulimit() {
+    struct rlimit rlim;
+    if (getrlimit(RLIMIT_NOFILE, &rlim) == 0) {
+        return rlim.rlim_cur;
+    }
+    return -1;
+}
+
 int main(int argc, char* argv[]) {
     int threadNum = std::thread::hardware_concurrency() * 3;
+    ulimit = getulimit();
+    // std::cout << "ulimit: " << ulimit << std::endl;
     Dict dict;
 
     if (argc < 2 || argc > 4) {
@@ -102,8 +116,12 @@ int main(int argc, char* argv[]) {
     {
         ThreadPool pool(threadNum);
         int taskNum = ipVec.size() * (endPort - startPort + 1);
-        std::cout << "Total " << taskNum << " tasks" << std::endl;
-        int taskSize = taskNum / threadNum > 65536 / threadNum ? 65536 / threadNum : taskNum / threadNum;
+        // std::cout << "Total " << taskNum << " tasks" << std::endl;
+        taskSize = taskNum / threadNum > (ulimit - 3) / (threadNum + 1) 
+                    ? (ulimit - 3) / (threadNum + 1)
+                    : taskNum / threadNum;
+        // std::cout << "taskSize: " << taskSize << std::endl;
+
         int count = 0;
         std::vector<Target> targetPack;
         std::vector<std::vector<Target>> targetPacks;
@@ -140,6 +158,9 @@ int main(int argc, char* argv[]) {
 
     for (std::string ip : ipVec) {
         std::sort(resultMap[ip].ports.begin(), resultMap[ip].ports.end());
+        if (resultMap[ip].ports.empty()) {
+            continue;
+        }
 
         std::cout << "scan report for " << ip << std::endl;
         std::cout << "Not shown: " << (endPort - startPort + 1 - resultMap[ip].ports.size()) << " closed ports" << std::endl;
