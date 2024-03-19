@@ -110,32 +110,37 @@ int main(int argc, char* argv[]) {
     }
 
     int taskNum = ipVec.size() * (endPort - startPort + 1);
-    // std::cout << "Total " << taskNum << " tasks" << std::endl;
-    int taskSize = taskNum / threadNum > (ulimit - 3) / (threadNum + 1) 
+    int taskSize = taskNum / threadNum + 1 > (ulimit - 3) / (threadNum + 1) 
                     ? (ulimit - 3) / (threadNum + 1)
-                    : taskNum / threadNum;
+                    : taskNum / threadNum + 1;
+    if (taskNum < threadNum) {
+        taskSize = taskNum;
+    }
+
     int count = 0;
     std::vector<Target> targetPack;
     std::vector<std::vector<Target>> targetPacks;
     for (std::string ip : ipVec) {
         for (int i = 0; i < endPort - startPort + 1; i++) {
-            if (count >= taskSize || (ip == ipVec.back() && i == endPort - startPort)) {
-                targetPacks.push_back(targetPack);
-                targetPack.clear();
-                count = 0;
-            }
             if (targetPack.empty()) {
                 targetPack.push_back(Target());
                 targetPack.back().ip = ip;
             }
             if (ip == targetPack.back().ip) {
                 targetPack.back().ports.push_back(startPort + i);
+                // std::cout << ip << " " << startPort + i << std::endl;
             } else {
                 targetPack.push_back(Target());
                 targetPack.back().ip = ip;
                 targetPack.back().ports.push_back(startPort + i);
+                // std::cout << ip << " " << startPort + i << std::endl;
             }
             count++;
+            if (count >= taskSize || (ip == ipVec.back() && i == endPort - startPort)) {
+                targetPacks.push_back(targetPack);
+                targetPack.clear();
+                count = 0;
+            }
         }
     }
 
@@ -152,6 +157,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    int hostCount = 0;
     for (std::string ip : ipVec) {
         std::sort(resultMap[ip].ports.begin(), resultMap[ip].ports.end());
         if (resultMap[ip].ports.empty()) {
@@ -161,6 +167,7 @@ int main(int argc, char* argv[]) {
         std::cout << "scan report for " << ip << std::endl;
         std::cout << "Not shown: " << (endPort - startPort + 1 - resultMap[ip].ports.size()) << " closed ports" << std::endl;
         if (!resultMap[ip].ports.empty()) {
+            hostCount++;
             std::cout << "PORT      STATE SERVICE" << std::endl;
             for (int port : resultMap[ip].ports) {
                 std::string mode;
@@ -180,7 +187,10 @@ int main(int argc, char* argv[]) {
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = end - start;
     //  Scan completed in 0.00 seconds
-    std::cout << "Scan completed in " << std::fixed << std::setprecision(2) << elapsed.count() << " seconds" << std::endl;
+    std::cout << "Scan done: " << ipVec.size() 
+                << " IP address" << " (" << hostCount << " hosts up)"   // still need to be fixed, ip should be tested first
+                << " scanned in " << std::fixed << std::setprecision(2) << elapsed.count() 
+                << " seconds" << std::endl;
 
     return 0;
 }

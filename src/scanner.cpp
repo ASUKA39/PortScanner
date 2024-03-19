@@ -75,12 +75,12 @@ int TCPConnectScanner::scan(const std::vector<Target>& targets) {
     }
 
     // wait for events
-    struct epoll_event events[20];
+    struct epoll_event events[socketMap.size()];
     int socketCount = socketMap.size();
     while (true) {
-        nfds = epoll_wait(epollfd, events, 16, 1000);
+        nfds = epoll_wait(epollfd, events, socketMap.size(), 1000);
         if (nfds < 0) {
-            std::cerr << "Error: epoll_wait" << std::endl;
+            std::cerr << "Error: epoll_wait " << errno << std::endl;
             close(epollfd);
             return -1;
         } else if (nfds != 0) {
