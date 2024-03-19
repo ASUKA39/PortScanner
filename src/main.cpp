@@ -69,7 +69,7 @@ int main(int argc, char* argv[]) {
     // Starting Scan at YYYY-MM-DD HH:MM CST
     auto start = std::chrono::high_resolution_clock::now();
     time_t date = std::chrono::system_clock::to_time_t(start);
-    std::cout << "Starting Scan at " << std::put_time(std::localtime(&date), "%Y-%m-%d %H:%M %Z") << std::endl;
+    std::cout << "Starting a39::Scanner v0.1 at " << std::put_time(std::localtime(&date), "%Y-%m-%d %H:%M %Z") << std::endl;
     
     if (ipArg.find('/') != std::string::npos) {
         std::string ip = ipArg.substr(0, ipArg.find('/'));
