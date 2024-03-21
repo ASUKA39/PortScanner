@@ -52,9 +52,9 @@ int main(int argc, char* argv[]) {
         startPort = std::stoi(portRange.substr(0, portRange.find('-')));
         startPort = startPort < 1 ? 1 : startPort;
         endPort = std::stoi(portRange.substr(portRange.find('-') + 1));
+        endPort = endPort > 65535 ? 65535 : endPort;
         if (endPort < startPort) {
-            std::cerr << "Invalid port range" << std::endl;
-            return 1;
+            std::swap(startPort, endPort);
         }
     } else {
         startPort = std::stoi(portRange);
